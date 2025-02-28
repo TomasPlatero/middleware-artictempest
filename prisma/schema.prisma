@@ -1,0 +1,80 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+model BotConfig {
+  id            Int      @id @default(autoincrement())
+  guildId       String   @unique // ID del servidor de Discord
+  forumChannelId String  // ID del canal de tipo "foro"
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+model User {
+  id            Int      @id @default(autoincrement())
+  discordId     String?   @unique
+  battleNetId   Int?      @unique  // Se mantiene como Int
+  username      String
+  createdAt     DateTime @default(now())
+
+  characters    Character[]
+  mythicRuns    MythicPlusRun[]   // Relación inversa con MythicPlusRun
+  signUps       SignUp[]          // Relación inversa con SignUp
+  ledGroups     MythicPlusGroup[] // Relación inversa con MythicPlusGroup (liderazgo)
+}
+
+model Character {
+  id          Int      @id @default(autoincrement())
+  userId      Int
+  name        String
+  realm       String
+  region      String
+  class       String
+  ilvl        Int
+  mythicScore Int
+  updatedAt   DateTime @updatedAt
+
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  mythicRuns  MythicPlusRun[]
+  signUps     SignUp[]
+}
+
+model MythicPlusRun {
+  id          Int      @id @default(autoincrement())
+  userId      Int
+  characterId Int
+  dungeon     String
+  keyLevel    Int
+  completed   Boolean
+  createdAt   DateTime @default(now())
+
+  user        User      @relation(fields: [userId], references: [id])
+  character   Character @relation(fields: [characterId], references: [id])
+}
+
+model SignUp {
+  id          Int      @id @default(autoincrement())
+  userId      Int
+  characterId Int
+  status      String   @default("pending")
+  createdAt   DateTime @default(now())
+
+  user        User      @relation(fields: [userId], references: [id])
+  character   Character @relation(fields: [characterId], references: [id])
+}
+
+model MythicPlusGroup {
+  id         Int      @id @default(autoincrement())
+  leaderId   Int
+  dungeon    String
+  keyLevel   Int
+  status     String   @default("open")
+  createdAt  DateTime @default(now())
+
+  leader     User     @relation(fields: [leaderId], references: [id])
+}
