@@ -1,29 +1,33 @@
 import express from 'express'
-import dotenv from 'dotenv'
 import cors from 'cors'
-import { createClient } from '@supabase/supabase-js'
-dotenv.config()
+import dotenv from 'dotenv'
+import jwt from 'jsonwebtoken'
 
+dotenv.config()
 const app = express()
 app.use(cors())
 app.use(express.json())
 
-const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY)
-
-app.use(async (req, res, next) => {
-  const token = req.headers.authorization?.split(' ')[1]
-  if (!token) return res.status(401).json({ error: 'No token provided' })
-
-  const { data: user, error } = await supabase.auth.getUser(token)
-  if (error || !user) return res.status(403).json({ error: 'Unauthorized' })
-
-  req.user = user
-  next()
-})
-
-app.get('/api/ping', (req, res) => {
-  res.json({ message: 'Autenticado correctamente', user: req.user })
-})
-
 const PORT = process.env.PORT || 3000
-app.listen(PORT, () => console.log(`Middleware corriendo en puerto ${PORT}`))
+
+// Middleware para verificar el JWT enviado por el dashboard
+app.use('/api', (req, res, next) => {
+  const auth = req.headers.authorization
+  if (!auth) return res.status(401).json({ error: 'No token provided' })
+
+  const token = auth.replace('Bearer ', '')
+  try {
+    const decoded = jwt.verify(token, process.env.SUPABASE_JWT_SECRET)
+    req.user = decoded
+    next()
+  } catch (err) {
+    return res.status(403).json({ error: 'Invalid token' })
+  }
+})
+
+// Endpoint protegido
+app.get('/api/ping', (req, res) => {
+  res.json({ message: 'Ping recibido. Token válido.' })
+})
+
+app.listen(PORT, () => console.log(`Middleware API corriendo en puerto ${PORT}`))
