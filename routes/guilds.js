@@ -1,3 +1,6 @@
+import dotenv from 'dotenv'
+dotenv.config()
+
 import express from 'express'
 import { createClient } from '@supabase/supabase-js'
 import fetch from 'node-fetch'
@@ -5,7 +8,7 @@ import fetch from 'node-fetch'
 const router = express.Router()
 
 const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL,
+  process.env.SUPABASE_URL,
   process.env.SUPABASE_SERVICE_ROLE_KEY
 )
 
