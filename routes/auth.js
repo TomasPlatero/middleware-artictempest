@@ -1,6 +1,7 @@
 import express from 'express'
 import fetch from 'node-fetch'
 import { createClient } from '@supabase/supabase-js'
+import redis from '../lib/redis' // asegúrate de que esté configurado correctamente
 
 const router = express.Router()
 
@@ -9,22 +10,30 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY
 )
 
-router.get('/login', (req, res) => {
+// LOGIN: guarda el token en Redis y genera un state seguro
+router.get('/login', async (req, res) => {
   const token = req.query.token
   if (!token) return res.status(400).send('Missing token')
 
+  const state = `state_${crypto.randomUUID()}`
+  await redis.setEx(state, 300, token) // TTL 5 minutos
+
   const redirectUri = `${process.env.MIDDLEWARE_PUBLIC_URL}/auth/callback`
-  const url = `https://eu.battle.net/oauth/authorize?client_id=${process.env.BLIZZARD_CLIENT_ID}&scope=openid wow.profile&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=code&state=${token}`
+  const url = `https://eu.battle.net/oauth/authorize?client_id=${process.env.BLIZZARD_CLIENT_ID}&scope=openid wow.profile&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=code&state=${state}`
 
   res.redirect(url)
 })
 
+// CALLBACK: recupera el token de Redis desde el state
 router.get('/callback', async (req, res) => {
   const code = req.query.code
-  const supabaseToken = req.query.state
+  const state = req.query.state
   const redirectUri = `${process.env.MIDDLEWARE_PUBLIC_URL}/auth/callback`
 
   try {
+    const supabaseToken = await redis.get(state)
+    if (!supabaseToken) return res.status(400).send('State inválido o expirado')
+
     // Obtener token de Battle.net
     const auth = Buffer.from(`${process.env.BLIZZARD_CLIENT_ID}:${process.env.BLIZZARD_CLIENT_SECRET}`).toString('base64')
     const tokenRes = await fetch('https://eu.battle.net/oauth/token', {
@@ -45,7 +54,7 @@ router.get('/callback', async (req, res) => {
     const userInfo = await userInfoRes.json()
     const battletag = userInfo.battletag
 
-    // Validar usuario con Supabase
+    // Validar token contra Supabase
     const supabaseAuth = createClient(
       process.env.SUPABASE_URL,
       process.env.SUPABASE_ANON_KEY,
@@ -57,13 +66,12 @@ router.get('/callback', async (req, res) => {
 
     const userId = user.user.id
 
-    // Guardar battletag en Supabase
+    // Guardar battletag
     await supabase
       .from('users')
       .update({ battletag })
       .eq('id', userId)
 
-    // Redirigir al dashboard
     res.redirect(`${process.env.DASHBOARD_URL}/dashboard`)
   } catch (err) {
     console.error('Error en callback:', err)
