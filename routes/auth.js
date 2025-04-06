@@ -1,7 +1,7 @@
 import express from 'express'
 import fetch from 'node-fetch'
 import { createClient } from '@supabase/supabase-js'
-import redis from '../lib/redis' // asegúrate de que esté configurado correctamente
+import redis from '../lib/redis'
 
 const router = express.Router()
 
