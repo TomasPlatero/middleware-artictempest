@@ -20,7 +20,7 @@ router.get('/login', async (req, res) => {
   await redis.set(state, token, 'EX', 300)
 
   const redirectUri = `${process.env.MIDDLEWARE_PUBLIC_URL}/auth/callback`
-  const url = `https://eu.battle.net/oauth/authorize?client_id=${process.env.BLIZZARD_CLIENT_ID}&scope=openid wow.profile&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=code&state=${state}`
+  const url = `https://oauth.battle.net/oauth/authorize?client_id=${process.env.BLIZZARD_CLIENT_ID}&scope=openid%20wow.profile&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=code&state=${state}`
 
   res.redirect(url)
 })
