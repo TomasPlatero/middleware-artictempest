@@ -14,7 +14,7 @@ router.get('/login', (req, res) => {
   if (!token) return res.status(400).send('Missing token')
 
   const redirectUri = `${process.env.MIDDLEWARE_PUBLIC_URL}/auth/callback`
-  const url = `https://eu.battle.net/oauth/authorize?client_id=${process.env.BLIZZARD_CLIENT_ID}&scope=openid wow.profile&redirect_uri=${redirectUri}&response_type=code&state=${token}`
+  const url = `https://eu.battle.net/oauth/authorize?client_id=${process.env.BLIZZARD_CLIENT_ID}&scope=openid wow.profile&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=code&state=${token}`
 
   res.redirect(url)
 })
