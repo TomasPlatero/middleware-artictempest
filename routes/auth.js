@@ -6,7 +6,7 @@ import crypto from 'crypto'
 
 const router = express.Router()
 
-const supabase = createClient(
+const supabaseAdmin = createClient(
   process.env.SUPABASE_URL,
   process.env.SUPABASE_SERVICE_ROLE_KEY
 )
@@ -17,65 +17,79 @@ router.get('/login', async (req, res) => {
   if (!token) return res.status(400).send('Missing token')
 
   const state = `state_${crypto.randomUUID()}`
-  await redis.set(state, token, 'EX', 300)
+  await redis.set(state, token, 'EX', 300) // TTL: 5 min
 
   const redirectUri = `${process.env.MIDDLEWARE_PUBLIC_URL}/auth/callback`
-  const url = `https://oauth.battle.net/oauth/authorize?client_id=${process.env.BLIZZARD_CLIENT_ID}&scope=openid%20wow.profile&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=code&state=${state}`
+  const url = `https://oauth.battle.net/oauth/authorize` +
+              `?client_id=${process.env.BLIZZARD_CLIENT_ID}` +
+              `&scope=openid%20wow.profile` +
+              `&redirect_uri=${encodeURIComponent(redirectUri)}` +
+              `&response_type=code` +
+              `&state=${state}`
 
   res.redirect(url)
 })
 
-// CALLBACK: recupera el token de Redis desde el state
+// CALLBACK: recupera el token desde Redis usando el state
 router.get('/callback', async (req, res) => {
-  const code = req.query.code
-  const state = req.query.state
+  const { code, state } = req.query
   const redirectUri = `${process.env.MIDDLEWARE_PUBLIC_URL}/auth/callback`
 
   try {
-    const supabaseToken = await redis.get(state)
-    if (!supabaseToken) return res.status(400).send('State inválido o expirado')
+    if (!code || !state) return res.status(400).send('Missing code or state')
 
-    // Obtener token de Battle.net
-    const auth = Buffer.from(`${process.env.BLIZZARD_CLIENT_ID}:${process.env.BLIZZARD_CLIENT_SECRET}`).toString('base64')
+    const supabaseToken = await redis.get(state)
+    if (!supabaseToken) return res.status(400).send('Invalid or expired state')
+
+    // Intercambiar el código por un access token de Blizzard
+    const authHeader = Buffer.from(`${process.env.BLIZZARD_CLIENT_ID}:${process.env.BLIZZARD_CLIENT_SECRET}`).toString('base64')
+
     const tokenRes = await fetch('https://eu.battle.net/oauth/token', {
       method: 'POST',
       headers: {
-        Authorization: `Basic ${auth}`,
+        Authorization: `Basic ${authHeader}`,
         'Content-Type': 'application/x-www-form-urlencoded'
       },
       body: `grant_type=authorization_code&code=${code}&redirect_uri=${redirectUri}`
     })
+
     const tokenData = await tokenRes.json()
+    if (!tokenData.access_token) throw new Error('Failed to retrieve access token from Blizzard')
+
     const blizzardToken = tokenData.access_token
 
-    // Obtener battletag
+    // Obtener datos del usuario (Battletag)
     const userInfoRes = await fetch('https://eu.battle.net/oauth/userinfo', {
       headers: { Authorization: `Bearer ${blizzardToken}` }
     })
-    const userInfo = await userInfoRes.json()
-    const battletag = userInfo.battletag
 
-    // Validar token contra Supabase
-    const supabaseAuth = createClient(
+    const userInfo = await userInfoRes.json()
+    const battletag = userInfo?.battletag
+    if (!battletag) throw new Error('No battletag in response from Blizzard')
+
+    // Validar el token en Supabase
+    const supabaseUser = createClient(
       process.env.SUPABASE_URL,
       process.env.SUPABASE_ANON_KEY,
       { global: { headers: { Authorization: `Bearer ${supabaseToken}` } } }
     )
 
-    const { data: user, error: userError } = await supabaseAuth.auth.getUser()
-    if (userError || !user?.user?.id) throw new Error('Token de Supabase inválido')
+    const { data: user, error: userError } = await supabaseUser.auth.getUser()
+    if (userError || !user?.user?.id) throw new Error('Invalid Supabase token')
 
     const userId = user.user.id
 
-    // Guardar battletag
-    await supabase
+    // Actualizar battletag
+    const { error: updateError } = await supabaseAdmin
       .from('users')
       .update({ battletag })
       .eq('id', userId)
 
+    if (updateError) throw new Error('Failed to update battletag in Supabase')
+
     res.redirect(`${process.env.DASHBOARD_URL}/dashboard`)
   } catch (err) {
-    console.error('Error en callback:', err)
+    console.error('[OAuth Callback Error]', err.message)
     res.status(500).send('Error al vincular cuenta Battle.net')
   }
 })
