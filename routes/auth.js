@@ -17,7 +17,7 @@ router.get('/login', async (req, res) => {
   if (!token) return res.status(400).send('Missing token')
 
   const state = `state_${crypto.randomUUID()}`
-  await redis.setEx(state, 300, token) // TTL 5 minutos
+  await redis.set(state, token, 'EX', 300)
 
   const redirectUri = `${process.env.MIDDLEWARE_PUBLIC_URL}/auth/callback`
   const url = `https://eu.battle.net/oauth/authorize?client_id=${process.env.BLIZZARD_CLIENT_ID}&scope=openid wow.profile&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=code&state=${state}`
