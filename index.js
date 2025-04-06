@@ -31,4 +31,6 @@ app.get('/api/ping', (req, res) => {
   res.json({ message: 'Ping recibido. Token válido.' })
 })
 
+app.use('/auth', authRoutes)
+
 app.listen(PORT, () => console.log(`Middleware API corriendo en puerto ${PORT}`))
